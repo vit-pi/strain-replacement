@@ -93,9 +93,15 @@ class Simulation:
         return slope_tot - self.slope_stop
 
     # Numerically determine resident equilibrium
-    def num_resident_equilibrium(self, report_outcome):
+    def num_resident_equilibrium(self, batch, report_outcome):
         # Initial condition
-        y0 = np.asarray([1e-3,0,self.m/self.D,self.mR/self.D,self.mI/self.D,0])
+        if batch:
+            y0 = np.asarray([1e-3,0,self.m,self.mR,self.mI,0])
+            self.m = 0
+            self.mR = 0
+            self.mI = 0
+        else:
+            y0 = np.asarray([1e-3,0,self.m/self.D,self.mR/self.D,self.mI/self.D,0])
         # Time span
         t_span = (0, self.t_max)
         # Solution
@@ -127,14 +133,14 @@ class Simulation:
         return sol.y[:, -1]
 
     # Numerically simulate invasion dynamics
-    def num_invasion_dynamics(self, report_outcome):
+    def num_invasion_dynamics(self, batch, report_outcome):
         # Initial condition
-        y0 = self.num_resident_equilibrium(report_outcome)
+        y0 = self.num_resident_equilibrium(batch, report_outcome)
         y0[1] = 1e-3
         # Time span
         t_span = (0, self.t_max)
         # Solution
-        sol = sp.integrate.solve_ivp(self.forcing, t_span, y0, events=self.stop_condition, first_step=self.dt, max_step=self.dt)
+        sol = sp.integrate.solve_ivp(self.forcing, t_span, y0, first_step=self.dt, max_step=self.dt)
         # Report invasion outcome
         if report_outcome:
             growth = np.log(sol.y[1,10]/sol.y[1,0])/(sol.t[10]-sol.t[0])
@@ -613,11 +619,11 @@ class Simulation:
     ###
 
     # Plot invasion dynamics
-    def plot_invasion_dynamics(self, fig_name, report_outcome=True):
+    def plot_invasion_dynamics(self, fig_name, batch, report_outcome=True):
         # Prepare figure
         fig, ax = plt.subplots(figsize=(4, 3))
         # Obtain solution
-        sol = self.num_invasion_dynamics(report_outcome)
+        sol = self.num_invasion_dynamics(batch, report_outcome)
         # Report outcome of inverse invasion
         if report_outcome:
             self.num_reversed_invasion_dynamics(report_outcome)
@@ -641,7 +647,7 @@ class Simulation:
         fig.savefig("Figures/"+fig_name+".png")
 
     # Wrapper for plot invasion dynamics in Fig1c-d
-    def plot_invasion(self, both_nutrients, potency, report_outcome=True):
+    def plot_invasion(self, both_nutrients, potency, batch, report_outcome=True):
         # Name
         if both_nutrients:
             name = "BothNutrients"
@@ -651,6 +657,10 @@ class Simulation:
             name += "_Potency"
         else:
             name += "_Investment"
+        if batch:
+            name += "_Batch"
+        else:
+            name += "_Cont"
         # Report plotting
         if report_outcome:
             print("PLOTTING THE CASE: "+name+".")
@@ -673,6 +683,8 @@ class Simulation:
                     fig_name = name+"Fig1f"
                     if report_outcome:
                         print("PRIVATE NUTRIENTS BUT TOXINS.")
+                self.m = 1
+                self.mR = 1
                 self.mI = nut
                 if both_nutrients:
                     self.mR = nut
@@ -680,7 +692,11 @@ class Simulation:
                     self.p = tox
                 else:
                     self.z = tox*0.5
-                self.plot_invasion_dynamics(fig_name,report_outcome)
+                if batch:
+                    self.delta = 0
+                    self.D = 0
+                    self.d = 0
+                self.plot_invasion_dynamics(fig_name,batch,report_outcome)
 
     # Plot invader growth in resident spent medium
     def plot_invader_growth_spent(self, ax, mI_values, potency, anal=False):
