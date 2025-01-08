@@ -38,4 +38,4 @@ These files reproduce various panels of the respective Figure X in [1]. The prel
 3) The folder "Figure" will include the output files, such as Fig1b_BothNutrients_Investment.svg, Fig1b_BothNutrients_Investment.png, etc.
 
 # References
-[1] Bakkeren *et al.* (2004), in preparation
+[1] Bakkeren *et al.* (2025), in preparation
