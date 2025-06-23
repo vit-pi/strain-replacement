@@ -19,7 +19,7 @@ $$
 and provides a range of methods for analysis of this system. These methods include numerical integration, numerical search for fixed points, analytical determination of fixed points and a range of plotting techniques. Moreover, the numerical simulation of the spatially-extended reaction-diffusion model can be performed.
 
 
-### FigX_file.py
+### FigX.py
 These files reproduce various panels of the respective Figure X in [1]. The preliminary figures are saved in the Figures folder.
 
 ## Installation guide
@@ -29,9 +29,9 @@ These files reproduce various panels of the respective Figure X in [1]. The prel
 3) Open this folder with PyCharm.
 
 ## Guide to reproduce Figures from [1]
-1) Open a file of interest (FigX_file.py).
+1) Open a file of interest (FigX.py).
 2) Run the file.
-3) Output file(s) appear in the Figures folder (resp. Movies folder).
+3) Output file(s) appear in the Figures folder.
 
 ## Demo
 1) Open Fig1b.py.
@@ -39,4 +39,4 @@ These files reproduce various panels of the respective Figure X in [1]. The prel
 3) The folder "Figure" will include the output files, such as Fig1b_BothNutrients_Investment.svg, Fig1b_BothNutrients_Investment.png, etc.
 
 # References
-[1] Bakkeren *et al.* (2025), in preparation
+[1] Bakkeren *et al.* (2025), Strain displacement in microbiomes via ecological competition, Nature Microbiology
