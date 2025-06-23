@@ -52,7 +52,101 @@ class Simulation:
         self.slope_stop = 5e-8
 
     ###
-    # NUMERICAL METHODS
+    # NUMERICAL METHODS FOR THE PDE SYSTEM
+    ###
+
+    # Initilialize PDE system - add extra variables
+    def initialize_pde(self, num_x=50, length=1.0, diff=np.array([1e-4, 1e-4, 1e-2, 1e-2, 1e-2, 1e-3])):
+        # Spatial length
+        self.num_x = num_x
+        self.length = length # length of segment
+        self.dx = self.length / (self.num_x - 1)
+
+        # Diffusion
+        self.diff = diff
+
+    # Forcing for the PDE system
+    def forcing_pde(self, t, Y):
+        """
+        Y is a vector length 6*Nx, reshape to (6,num_x)
+        Returns dY/dt vector same size.
+        """
+        Y = Y.reshape(6, self.num_x)
+        dYdt = np.zeros_like(Y)
+
+        # Compute diffusion for each species with no-flux BC
+        for i in range(6):
+            u = Y[i,:]
+
+            # Neumann BC (no-flux) implemented by mirror
+            u_ext = np.zeros(self.num_x + 2)
+            u_ext[1:-1] = u
+            u_ext[0] = u[1]    # mirror left boundary
+            u_ext[-1] = u[-2]  # mirror right boundary
+
+            dudx2 = (u_ext[0:-2] - 2*u_ext[1:-1] + u_ext[2:]) / (self.dx**2)
+            dYdt[i,:] = self.diff[i] * dudx2
+
+        # Add local reaction terms: for each spatial point
+        for ix in range(self.num_x):
+            local_vars = Y[:, ix]  # length 6 vector at spatial point ix
+            reaction = self.forcing(t, local_vars)  # your existing ODE forcing for that point
+            dYdt[:, ix] += reaction
+
+        return dYdt.ravel()
+
+    # Numerically determine resident equilibrium of the PDE system
+    def num_resident_equilibrium_pde(self, batch):
+        # Initial condition (e.g., uniform initial conditions)
+        y0 = np.zeros((6, self.num_x))
+        # Initial condition
+        if batch:
+            y0[0,:] = 1e-3  # resident
+            y0[1,:] = 0     # invader
+            y0[2,:] = self.m  # shared nutrient
+            y0[3,:] = self.mR # private nutrient resident
+            y0[4,:] = self.mI # private nutrient invader
+            y0[5,:] = 0             # toxin
+            self.m = 0
+            self.mR = 0
+            self.mI = 0
+        else:
+            y0[0,:] = 1e-3  # resident
+            y0[1,:] = 0     # invader
+            y0[2,:] = self.m/self.D  # shared nutrient
+            y0[3,:] = self.mR/self.D # private nutrient resident
+            y0[4,:] = self.mI/self.D # private nutrient invader
+            y0[5,:] = 0             # toxin
+        # Time span
+        t_span = (0, self.t_max)
+        # Solution
+        sol = sp.integrate.solve_ivp(self.forcing_pde, t_span,  y0.ravel(), method='RK45')
+        return sol.y[:,-1]
+
+    # Numerically simulate invasion dynamics of the PDE system
+    def num_invasion_dynamics_pde(self, inverse_sigma, batch):
+        # Initial condition
+        y0 = self.num_resident_equilibrium_pde(batch)
+        y0 = y0.reshape((6, self.num_x))
+        # Prepare a Gaussian-like initial distribution of invaders
+        dist = np.ones(self.num_x)
+        if inverse_sigma > 0:
+            # Gaussian centered at L/2
+            mu = self.length / 2
+            x = np.linspace(0, self.length, self.num_x)
+            dist = np.exp(-0.5 * ((x - mu) * inverse_sigma) ** 2)
+        # Normalize to sum to 1
+        dist *= self.num_x/dist.sum()
+        # Create the invaders
+        y0[1,:] = 1e-3*dist
+        # Time span
+        t_span = (0, self.t_max)
+        # Solution
+        sol = sp.integrate.solve_ivp(self.forcing_pde, t_span, y0.ravel(), method='RK45', dense_output=True)
+        return sol
+
+    ###
+    # NUMERICAL METHODS FOR THE ODE SYSTEM
     ###
 
     # Forcing of the ODE system
@@ -133,14 +227,14 @@ class Simulation:
         return sol.y[:, -1]
 
     # Numerically simulate invasion dynamics
-    def num_invasion_dynamics(self, batch, report_outcome):
+    def num_invasion_dynamics(self, batch, report_outcome, invader_init=1e-3):
         # Initial condition
         y0 = self.num_resident_equilibrium(batch, report_outcome)
-        y0[1] = 1e-3
+        y0[1] = invader_init
         # Time span
         t_span = (0, self.t_max)
         # Solution
-        sol = sp.integrate.solve_ivp(self.forcing, t_span, y0, first_step=self.dt, max_step=self.dt)
+        sol = sp.integrate.solve_ivp(self.forcing, t_span, y0, atol=1e-5, rtol=1e-5)#, first_step=self.dt, max_step=self.dt)
         # Report invasion outcome
         if report_outcome:
             growth = np.log(sol.y[1,10]/sol.y[1,0])/(sol.t[10]-sol.t[0])
@@ -619,11 +713,11 @@ class Simulation:
     ###
 
     # Plot invasion dynamics
-    def plot_invasion_dynamics(self, fig_name, batch, report_outcome=True):
+    def plot_invasion_dynamics(self, fig_name, batch, report_outcome=True, invader_init=1e-3):
         # Prepare figure
         fig, ax = plt.subplots(figsize=(4, 3))
         # Obtain solution
-        sol = self.num_invasion_dynamics(batch, report_outcome)
+        sol = self.num_invasion_dynamics(batch, report_outcome, invader_init)
         # Report outcome of inverse invasion
         if report_outcome:
             self.num_reversed_invasion_dynamics(report_outcome)
@@ -647,7 +741,7 @@ class Simulation:
         fig.savefig("Figures/"+fig_name+".png")
 
     # Wrapper for plot invasion dynamics in Fig1c-d
-    def plot_invasion(self, both_nutrients, potency, batch, report_outcome=True):
+    def plot_invasion(self, both_nutrients, potency, batch, report_outcome=True, invader_init=1e-3):
         # Name
         if both_nutrients:
             name = "BothNutrients"
@@ -661,6 +755,7 @@ class Simulation:
             name += "_Batch"
         else:
             name += "_Cont"
+        name += "_InvaderInit"+format(invader_init, '.0e')
         # Report plotting
         if report_outcome:
             print("PLOTTING THE CASE: "+name+".")
@@ -696,7 +791,91 @@ class Simulation:
                     self.delta = 0
                     self.D = 0
                     self.d = 0
-                self.plot_invasion_dynamics(fig_name,batch,report_outcome)
+                self.plot_invasion_dynamics(fig_name,batch,report_outcome,invader_init)
+
+    # Wrapper for plot invasion dynamics in Fig1c-d
+    def plot_density_invasion(self, both_nutrients, potency, batch, invader_inits, report_outcome=True):
+        # Name
+        if both_nutrients:
+            name = "BothNutrients"
+        else:
+            name = "InvaderNutrient"
+        if potency:
+            name += "_Potency"
+        else:
+            name += "_Investment"
+        if batch:
+            name += "_Batch"
+        else:
+            name += "_Cont"
+        name += "_Density"
+        # Report plotting
+        if report_outcome:
+            print("PLOTTING THE CASE: "+name+".")
+        # Toxin values, nutrient values
+        for nut in range(2):
+            for tox in range(2):
+                if nut == 0 and tox == 0:
+                    fig_name = name+"Fig1c"
+                    if report_outcome:
+                        print("NO PRIVATE NUTRIENTS AND NO TOXINS.")
+                elif nut == 0 and tox == 1:
+                    fig_name = name+"Fig1e"
+                    if report_outcome:
+                        print("NO PRIVATE NUTRIENTS BUT TOXINS.")
+                elif nut == 1 and tox == 0:
+                    fig_name = name+"Fig1d"
+                    if report_outcome:
+                        print("PRIVATE NUTRIENTS BUT NO TOXINS.")
+                else:
+                    fig_name = name+"Fig1f"
+                    if report_outcome:
+                        print("PRIVATE NUTRIENTS BUT TOXINS.")
+                self.m = 1
+                self.mR = 1
+                self.mI = nut
+                if both_nutrients:
+                    self.mR = nut
+                if potency:
+                    self.p = tox
+                else:
+                    self.z = tox*0.5
+                if batch:
+                    self.delta = 0
+                    self.D = 0
+                    self.d = 0
+                self.plot_density_invasion_dynamics(fig_name,batch,invader_inits,report_outcome)
+
+    # Plot invasion dynamics
+    def plot_density_invasion_dynamics(self, fig_name, batch, invader_inits, report_outcome=True):
+        # Prepare figure
+        fig, ax = plt.subplots(ncols=len(invader_inits), figsize=(4*len(invader_inits), 3))
+        for i in range(len(invader_inits)):
+            invader_init = invader_inits[i]
+            # Obtain solution
+            sol = self.num_invasion_dynamics(batch, report_outcome, invader_init)
+            # Report outcome of inverse invasion
+            if report_outcome:
+                self.num_reversed_invasion_dynamics(report_outcome)
+                self.report_invasion_outcome(False)
+            # Make plot
+            ax[i].plot(sol.t, sol.y[0,:], color="#129ad7ff", label='Resident')
+            ax[i].plot(sol.t, sol.y[1,:], color="#e3181fff", label='Invader')
+            ax[i].plot(sol.t, sol.y[2,:], color="#a8a5a5ff", linestyle=(0,(5,10)), label='Shared nutrient')
+            ax[i].plot(sol.t, sol.y[3,:], color="#129ad7ff", linestyle=(0,(5,10)), label='Resident private nutrient')
+            ax[i].plot(sol.t, sol.y[4,:], color="#e3181fff", linestyle=(0,(5,10)), label='Invader private nutrient')
+            ax[i].plot(sol.t, sol.y[5,:], color="#e3181fff", linestyle="dotted", label='Invader toxin')
+            # Scale, limits, legend
+            ax[i].set_yscale('log')
+            ax[i].set_ylim([5e-4, 1e3])
+            ax[i].set_xlim([0,self.t_max])
+            ax[i].set_xlabel('Time')
+            ax[i].set_ylabel('Abundance')
+            ax[i].legend(loc='best')
+            ax[i].set_title(f"$I_0={invader_init}$")
+        # SAVE FIGURE
+        fig.savefig("Figures/"+fig_name+".svg")
+        fig.savefig("Figures/"+fig_name+".png")
 
     # Plot invader growth in resident spent medium
     def plot_invader_growth_spent(self, ax, mI_values, potency, anal=False):
@@ -858,3 +1037,91 @@ class Simulation:
             name += "_Investment"
         fig.savefig("Figures/Fig1b_"+name+".svg")
         fig.savefig("Figures/Fig1b_"+name+".png")
+
+    # Plot invasion dynamics of the PDE
+    # List of times at which spatial profiles should be plotted (equal)
+    def plot_invasion_dynamics_pde(self, fig_name, batch, inverse_sigma, times):
+        # Prepare figure
+        fig, ax = plt.subplots(ncols=len(times),figsize=(4*len(times), 3))
+        # Obtain solution
+        sol = self.num_invasion_dynamics_pde(inverse_sigma, batch)
+        x = np.linspace(0,self.length,self.num_x)
+        i = 0
+        for t in times:
+            # Querry the solution
+            i_time = np.searchsorted(sol.t, t, side='right')
+            y = sol.y[:,i_time]
+            y = y.reshape(6, self.num_x)
+            # Make plot
+            ax[i].plot(x, y[0,:], color="#129ad7ff", label='Resident')
+            ax[i].plot(x, y[1,:], color="#e3181fff", label='Invader')
+            ax[i].plot(x, y[2,:], color="#a8a5a5ff", linestyle=(0,(5,10)), label='Shared nutrient')
+            ax[i].plot(x, y[3,:], color="#129ad7ff", linestyle=(0,(5,10)), label='Resident private nutrient')
+            ax[i].plot(x, y[4,:], color="#e3181fff", linestyle=(0,(5,10)), label='Invader private nutrient')
+            ax[i].plot(x, y[5,:], color="#e3181fff", linestyle="dotted", label='Invader toxin')
+            # Scale, limits, legend
+            ax[i].set_yscale('log')
+            ax[i].set_ylim([5e-4, 100])
+            ax[i].set_xlim([0,self.length])
+            ax[i].set_xlabel('Space')
+            ax[i].set_ylabel('Abundance')
+            ax[i].set_title('t = '+str(t))
+            ax[i].legend(loc='best')
+            i += 1
+        # SAVE FIGURE
+        fig.savefig("Figures/"+fig_name+".svg")
+        fig.savefig("Figures/"+fig_name+".png")
+
+    # Wrapper for plot invasion dynamics in the PDE supplementary figures
+    def plot_invasion_pde(self, both_nutrients, potency, batch, inverse_sigma, times, report_outcome=True):
+        # Name
+        if both_nutrients:
+            name = "BothNutrients"
+        else:
+            name = "InvaderNutrient"
+        if potency:
+            name += "_Potency"
+        else:
+            name += "_Investment"
+        if batch:
+            name += "_Batch"
+        else:
+            name += "_Cont"
+        name += "_InverseSigma"+str(inverse_sigma)
+        # Report plotting
+        if report_outcome:
+            print("PLOTTING THE CASE: "+name+".")
+        # Toxin values, nutrient values
+        for nut in range(2):
+            for tox in range(2):
+                if nut == 0 and tox == 0:
+                    fig_name = name+"FigS3a"
+                    if report_outcome:
+                        print("NO PRIVATE NUTRIENTS AND NO TOXINS.")
+                elif nut == 0 and tox == 1:
+                    fig_name = name+"FigS3b"
+                    if report_outcome:
+                        print("NO PRIVATE NUTRIENTS BUT TOXINS.")
+                elif nut == 1 and tox == 0:
+                    fig_name = name+"FigS3c"
+                    if report_outcome:
+                        print("PRIVATE NUTRIENTS BUT NO TOXINS.")
+                else:
+                    fig_name = name+"FigS3d"
+                    if report_outcome:
+                        print("PRIVATE NUTRIENTS BUT TOXINS.")
+                self.m = 1
+                self.mR = 1
+                self.mI = nut
+                if both_nutrients:
+                    self.mR = nut
+                if potency:
+                    self.p = tox
+                else:
+                    self.z = tox*0.5
+                if batch:
+                    self.delta = 0
+                    self.D = 0
+                    self.d = 0
+                self.plot_invasion_dynamics_pde(fig_name,batch,inverse_sigma,times)
+                plt.close()
