@@ -16,7 +16,21 @@ $$
 \end{aligned}
 $$
 
-and provides a range of methods for analysis of this system. These methods include numerical integration, numerical search for fixed points, analytical determination of fixed points and a range of plotting techniques.
+and provides a range of methods for analysis of this system. These methods include numerical integration, numerical search for fixed points, analytical determination of fixed points and a range of plotting techniques. Moreover, the numerical simulation of the spatilly-extended model
+
+$$
+\begin{aligned}
+\dot{N}_R &= M_{NR}\nabla N_R + N_R \left(\frac{r_Rx/k_R+R_Rx_R/K_R}{1+x/k_R+x_R/K_R}-\frac{py}{y+K}-\delta\right)\\
+    \dot{N}_I &= M_{NI}\nabla N_I +N_I \left((1-z)\frac{r_Ix/k_I+R_Ix_I/K_I}{1+x/k_I+x_I/K_I}-\delta\right)\\
+    \dot{x} &= M_{x}\nabla x +m-Dx-N_R\frac{c_Rx/k_R}{1+x/k_R+x_R/K_R}-N_I(1-z)\frac{c_Ix/k_I}{1+x/k_I+x_I/K_I}\\
+    \dot{x}_R &=M_{xR}\nabla x_R +m_R-Dx_R-N_R\frac{C_Rx/K_R}{1+x/k_R+x_R/K_R}\\
+    \dot{x}_I &= M_{xI}\nabla x_I +m_I-Dx_I-N_I(1-z)\frac{C_Ix_I/K_I}{1+x/k_I+x_I/K_I}\\
+    \dot{y} &= M_{y}\nabla y +zgN_I-d y - N_R\frac{sy}{y+K}.\\
+\end{aligned}
+$$
+
+can be performed.
+
 
 ### FigX_file.py
 These files reproduce various panels of the respective Figure X in [1]. The preliminary figures are saved in the Figures folder.
